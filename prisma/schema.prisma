@@ -7,7 +7,6 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = env("DATABASE_URL")
 }
 
 // Admin user for the system
@@ -93,6 +92,8 @@ model Passenger {
 
   // Relationships
   manifest Manifest @relation(fields: [manifestId], references: [id], onDelete: Cascade)
+
+  @@unique([manifestId, seatNumber])
 
   @@map("passengers")
 }

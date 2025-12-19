@@ -1,105 +1,86 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createPassengerSchema } from '@/lib/validations'
-import { prisma } from '@/lib/prisma'
+import { NextRequest, NextResponse } from "next/server";
+import { createPassengerSchema } from "@/lib/validations";
+import { prisma } from "@/lib/prisma";
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const passengerData = createPassengerSchema.parse(body)
+    const body = await request.json();
+    const { name, nextOfKin, nextOfKinPhone, manifestId, seatNumber } =
+      createPassengerSchema.parse(body);
 
-    // Verify manifest exists and is not locked
+    // Fetch manifest + current passenger count
     const manifest = await prisma.manifest.findUnique({
-      where: { id: passengerData.manifestId },
-      include: { passengers: true }
-    })
+      where: { id: manifestId },
+      include: { passengers: { select: { seatNumber: true } } },
+    });
 
     if (!manifest) {
-      return NextResponse.json(
-        { error: 'Manifest not found' },
-        { status: 404 }
-      )
+      return NextResponse.json({ error: "Manifest not found" }, { status: 404 });
     }
 
     if (manifest.isLocked) {
       return NextResponse.json(
-        { error: 'This manifest has been finalized' },
+        { error: "Manifest is locked and cannot accept new passengers" },
         { status: 400 }
-      )
+      );
     }
 
-    // Check capacity
     if (manifest.passengers.length >= manifest.capacity) {
-      return NextResponse.json(
-        { error: 'Vehicle is at full capacity' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Manifest is full" }, { status: 400 });
     }
 
-    // Create passenger
+    const taken = new Set<number>(
+      manifest.passengers
+        .map((p) => p.seatNumber)
+        .filter((n): n is number => typeof n === "number")
+    );
+
+    // Pick requested seat (if provided) or next available seat
+    let assignedSeat: number | undefined = seatNumber;
+    if (assignedSeat != null) {
+      if (assignedSeat < 1 || assignedSeat > manifest.capacity) {
+        return NextResponse.json(
+          { error: `Seat number must be between 1 and ${manifest.capacity}` },
+          { status: 400 }
+        );
+      }
+      if (taken.has(assignedSeat)) {
+        return NextResponse.json({ error: "Seat already taken" }, { status: 409 });
+      }
+    } else {
+      for (let s = 1; s <= manifest.capacity; s++) {
+        if (!taken.has(s)) {
+          assignedSeat = s;
+          break;
+        }
+      }
+      if (assignedSeat == null) {
+        return NextResponse.json({ error: "No available seat" }, { status: 400 });
+      }
+    }
+
+    // Create passenger. Unique constraint on (manifestId, seatNumber) protects races.
     const passenger = await prisma.passenger.create({
       data: {
-        name: passengerData.name,
-        nextOfKin: passengerData.nextOfKin,
-        nextOfKinPhone: passengerData.nextOfKinPhone,
-        manifestId: passengerData.manifestId,
-        seatNumber: passengerData.seatNumber || manifest.passengers.length + 1
+        name,
+        nextOfKin,
+        nextOfKinPhone,
+        manifestId,
+        seatNumber: assignedSeat,
       },
-      include: {
-        manifest: {
-          select: {
-            origin: true,
-            destination: true,
-            plateNumber: true,
-            driverName: true
-          }
-        }
-      }
-    })
+    });
 
-    return NextResponse.json({ passenger })
-
-  } catch (error) {
-    console.error('Passenger creation error:', error)
-    return NextResponse.json(
-      { error: 'Invalid request data' },
-      { status: 400 }
-    )
-  }
-}
-
-export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url)
-    const manifestId = searchParams.get('manifestId')
-
-    if (!manifestId) {
-      return NextResponse.json(
-        { error: 'Manifest ID is required' },
-        { status: 400 }
-      )
+    return NextResponse.json({ passenger }, { status: 201 });
+  } catch (error: any) {
+    // Handle uniqueness violations cleanly
+    if (error?.code === "P2002") {
+      return NextResponse.json({ error: "Seat already taken" }, { status: 409 });
     }
 
-    const passengers = await prisma.passenger.findMany({
-      where: { manifestId },
-      orderBy: { seatNumber: 'asc' },
-      include: {
-        manifest: {
-          select: {
-            origin: true,
-            destination: true,
-            plateNumber: true
-          }
-        }
-      }
-    })
-
-    return NextResponse.json({ passengers })
-
-  } catch (error) {
-    console.error('Passengers fetch error:', error)
+    console.error("Passenger creation error:", error);
     return NextResponse.json(
-      { error: 'Failed to fetch passengers' },
+      { error: "Failed to create passenger" },
       { status: 500 }
-    )
+    );
   }
 }

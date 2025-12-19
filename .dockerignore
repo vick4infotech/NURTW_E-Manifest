@@ -1,0 +1,8 @@
+node_modules
+.next
+.env*
+prisma/*.db
+coverage
+.git
+.gitignore
+.DS_Store

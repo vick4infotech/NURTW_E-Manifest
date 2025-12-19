@@ -1,19 +1,33 @@
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+function getDefaultAdmin() {
+  const email = process.env.DEFAULT_ADMIN_EMAIL ?? "admin@nurtw.local";
+  const name = process.env.DEFAULT_ADMIN_NAME ?? "Admin";
+  let password = process.env.DEFAULT_ADMIN_PASSWORD ?? "";
+  if (!password) {
+    // Generate a one-time random password for dev convenience.
+    password = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    console.warn(
+      `[seed] DEFAULT_ADMIN_PASSWORD was not set. Generated dev password for ${email}: ${password}`
+    );
+  }
+  return { email, name, password };
+}
 
-const prisma = new PrismaClient()
+const prisma = new PrismaClient({ datasourceUrl: process.env.DATABASE_URL })
 
 async function main() {
+  const defaultAdmin = getDefaultAdmin();
   // Create default admin user
-  const hashedPassword = await bcrypt.hash('admin123', 10)
+  const hashedPassword = await bcrypt.hash(defaultAdmin.password, 10)
   
   const admin = await prisma.admin.upsert({
-    where: { email: 'admin@nurtw.gov.ng' },
+    where: { email: defaultAdmin.email },
     update: {},
     create: {
-      email: 'admin@nurtw.gov.ng',
+      email: defaultAdmin.email,
       password: hashedPassword,
-      name: 'NURTW Administrator',
+      name: defaultAdmin.name,
     },
   })
 
