@@ -1,0 +1,98 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Admin user for the system
+model Admin {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String   // bcrypt hashed password
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("admins")
+}
+
+// Park represents a transport park/terminal
+model Park {
+  id            String   @id @default(cuid())
+  name          String
+  code          String   @unique // Unique park identifier
+  defaultOrigin String   // Default origin for this park
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relationships
+  agents    Agent[]
+  manifests Manifest[]
+
+  @@map("parks")
+}
+
+// Agent represents transport agents who manage manifests
+model Agent {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique // 4-digit agent code for login
+  parkId    String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  park      Park       @relation(fields: [parkId], references: [id], onDelete: Cascade)
+  manifests Manifest[]
+
+  @@map("agents")
+}
+
+// Manifest represents a vehicle journey with passengers
+model Manifest {
+  id           String   @id @default(cuid())
+  manifestCode String   @unique // NURTW-Origin-Destination-ParkCode-TimeStamp format
+  origin       String
+  destination  String
+  plateNumber  String
+  driverName   String
+  driverPhone  String
+  capacity     Int      // Vehicle capacity (4-20)
+  isLocked     Boolean  @default(false) // When finalized, manifest is locked
+  qrCode       String?  // Generated QR code data
+  agentId      String
+  parkId       String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relationships
+  agent      Agent       @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  park       Park        @relation(fields: [parkId], references: [id], onDelete: Cascade)
+  passengers Passenger[]
+
+  @@map("manifests")
+}
+
+// Passenger represents individual passengers on a manifest
+model Passenger {
+  id             String   @id @default(cuid())
+  name           String
+  nextOfKin      String   // Next of kin name
+  nextOfKinPhone String   // Next of kin phone number
+  seatNumber     Int?     // Optional seat assignment
+  manifestId     String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relationships
+  manifest Manifest @relation(fields: [manifestId], references: [id], onDelete: Cascade)
+
+  @@map("passengers")
+}

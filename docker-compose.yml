@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  # Next.js Application
+  app:
+    build: .
+    container_name: nurtw-app
+    environment:
+      - DATABASE_URL=file:./dev.db
+      - NEXTAUTH_SECRET=nurtw-digital-platform-secret-2024
+      - NEXTAUTH_URL=http://localhost:3000
+      - DEFAULT_ADMIN_EMAIL=admin@nurtw.gov.ng
+      - DEFAULT_ADMIN_PASSWORD=admin123
+      - DEFAULT_ADMIN_NAME=NURTW Administrator
+      - NEXT_PUBLIC_APP_NAME=NURTW Digital Platform
+      - NEXT_PUBLIC_APP_VERSION=1.0.0
+    ports:
+      - "3000:3000"
+    networks:
+      - nurtw-network
+    command: >
+      sh -c "
+        npx prisma migrate deploy &&
+        node server.js
+      "
+
+# No volumes needed for SQLite
+
+networks:
+  nurtw-network:
+    driver: bridge
